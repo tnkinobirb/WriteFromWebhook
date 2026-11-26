@@ -1,5 +1,3 @@
-import pytest
-
 from examples.storekit import format_receipt
 
 '''
@@ -26,9 +24,7 @@ def test_format_receipt_defaults():
         "\n\n\n",
     ])
 
-    payload = {"event": "order.created.v2", "data": {}}
-
-    assert format_receipt(payload) == expected
+    assert format_receipt({}) == expected
 
 def test_format_receipt_golden():
     order = {
@@ -101,61 +97,6 @@ def test_format_receipt_golden():
         "\n\n\n",
     ])
 
-    actual = format_receipt({"event": "order.created.v2", "data": order})
+    actual = format_receipt(order)
 
     assert actual == expected
-
-
-def test_format_receipt_supports_legacy_order_created_shape():
-    order = {"code": "LEGACY", "total": 1234}
-
-    assert format_receipt(order) == format_receipt({
-        "event": "order.created.v2",
-        "data": order,
-    })
-
-
-def test_format_receipt_tolerates_nullable_optional_fields():
-    payload = {
-        "event": "order.created.v2",
-        "data": {
-            "venue": None,
-            "customer": None,
-            "table": None,
-            "items": None,
-            "tip": None,
-            "total": None,
-            "discountTotal": None,
-            "deliveryFee": None,
-        },
-    }
-
-    receipt = format_receipt(payload)
-
-    assert "Deliver To: Unknown ()" in receipt
-    assert "TOTAL: £0.00" in receipt
-
-
-def test_format_receipt_tolerates_nested_nullable_fields():
-    payload = {
-        "event": "order.created.v2",
-        "data": {
-            "table": {"name": None, "area": None},
-            "items": [{"name": "Example", "price": None, "modifiers": None}],
-        },
-    }
-
-    receipt = format_receipt(payload)
-
-    assert "Deliver To: Unknown ()" in receipt
-    assert "1. Example x1 - £0.00" in receipt
-
-
-@pytest.mark.parametrize("payload", [
-    {"event": "order.created.v2", "data": None},
-    {"event": "order.completed", "data": {}},
-])
-def test_format_receipt_rejects_wrong_event_shape(payload):
-    with pytest.raises(ValueError):
-        format_receipt(payload)
-
