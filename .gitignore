@@ -1,0 +1,46 @@
+
+# Python cache
+__pycache__/
+*.py[cod]
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Pytest and coverage
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+
+# IDE / editor
+.vscode/
+.idea/
+*.swp
+*~
+
+# Environment variables and secrets
+.env
+.env.*
+!.env.example
+*.secret
+webhook_secret
+
+# Local runtime files
+*.log
+*.pid
+*.sock
+ttyBT
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Local webhook receiver output/configuration
+output.bin
+wfwh.env
+
+# Per-run diagnostic logs; retain the empty directory marker.
+wfwh/logs/*.log
