@@ -16,7 +16,42 @@ Missing fields may fall back to defaults; review the webhook event docs.
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-def format_receipt(data: dict) -> str:
+def _mapping(value, field: str, *, nullable: bool = True) -> dict:
+    if value is None and nullable:
+        return {}
+    if not isinstance(value, dict):
+        raise ValueError(f"{field} must be an object")
+    return value
+
+
+def _list(value, field: str) -> list:
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        raise ValueError(f"{field} must be an array")
+    return value
+
+
+def _minor_units(value, field: str) -> float:
+    if value is None:
+        return 0
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError(f"{field} must be a number")
+    return value / 100
+
+
+def _order_from_payload(payload: dict) -> dict:
+    payload = _mapping(payload, "payload", nullable=False)
+    if "event" not in payload:
+        # Backwards compatibility with StoreKit's legacy order.created body.
+        return payload
+    if payload.get("event") != "order.created.v2":
+        raise ValueError("expected an order.created.v2 event")
+    return _mapping(payload.get("data"), "data", nullable=False)
+
+
+def format_receipt(payload: dict) -> str:
+    data = _order_from_payload(payload)
     lines = []
     pound = "£"  # Encoded as CP437 when printing
 
@@ -24,7 +59,8 @@ def format_receipt(data: dict) -> str:
 
     # === Venue info === #
     venue = "Make-Donalds"
-    address = data.get("venue", {}).get("address", {})
+    venue_data = _mapping(data.get("venue"), "data.venue")
+    address = _mapping(venue_data.get("address"), "data.venue.address")
 
     # === Order info === #
     order_code = data.get("code", "No Code")
@@ -42,18 +78,19 @@ def format_receipt(data: dict) -> str:
         created_at = "Unknown"
 
     # === Customer info === #
-    customer = data.get("customer", {})
-    customer_name = f"{customer.get('firstName', '')} {customer.get('lastName', '')}".strip()
+    customer = _mapping(data.get("customer"), "data.customer")
+    customer_name = f"{customer.get('firstName') or ''} {customer.get('lastName') or ''}".strip()
 
     # === Delivery-To location === #
-    staff_name = data.get("table", {}).get("name", "Unknown")
-    area = data.get("table", {}).get("area", {}).get("name", "")
+    table = _mapping(data.get("table"), "data.table")
+    staff_name = table.get("name") or "Unknown"
+    area = _mapping(table.get("area"), "data.table.area").get("name") or ""
 
     # === Pricing info === #
-    tip = data.get("tip", 0) / 100
-    total = data.get("total", 0) / 100
-    discount = data.get("discountTotal", 0) / 100
-    delivery_fee = data.get("deliveryFee", 0) / 100
+    tip = _minor_units(data.get("tip"), "data.tip")
+    total = _minor_units(data.get("total"), "data.total")
+    discount = _minor_units(data.get("discountTotal"), "data.discountTotal")
+    delivery_fee = _minor_units(data.get("deliveryFee"), "data.deliveryFee")
 
     ## === Reciept Formatting === ##
 
@@ -79,17 +116,26 @@ def format_receipt(data: dict) -> str:
 
     # === Items === #
     lines.append("Items:")
-    for idx, item in enumerate(data.get("items", []), start=1):
+    for idx, item in enumerate(_list(data.get("items"), "data.items"), start=1):
+        item = _mapping(item, f"data.items[{idx - 1}]", nullable=False)
         # === Name, Quantity and Price === #
         name = item.get("name", "")
         qty = item.get("quantity", 1)
-        base_price = item.get("price", 0) / 100
+        base_price = _minor_units(item.get("price"), f"data.items[{idx - 1}].price")
         lines.append(f"{idx}. {name} x{qty} - {pound}{base_price:.2f}")
 
         # === Price modifiers (discounts/etc) === #
-        for mod in item.get("modifiers", []):
+        for mod_idx, mod in enumerate(_list(item.get("modifiers"), f"data.items[{idx - 1}].modifiers")):
+            mod = _mapping(
+                mod,
+                f"data.items[{idx - 1}].modifiers[{mod_idx}]",
+                nullable=False,
+            )
             mod_name = mod.get("name", "")
-            mod_price = mod.get("price", 0) / 100
+            mod_price = _minor_units(
+                mod.get("price"),
+                f"data.items[{idx - 1}].modifiers[{mod_idx}].price",
+            )
             lines.append(f"  + {mod_name} - {pound}{mod_price:.2f}")
 
         # === Item notes === #
@@ -123,3 +169,4 @@ def format_receipt(data: dict) -> str:
     lines.append("\n\n\n")
 
     return "\n".join(lines)
+
